@@ -1,0 +1,689 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">   
+    <title>My Cloud Drive</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .file-card:hover .file-actions { opacity: 1; pointer-events: auto; } 
+        .file-actions { opacity: 0; pointer-events: none; transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.1); }
+        * { scrollbar-width: thin; scrollbar-color: #52525b transparent; }   
+        body { background-color: #09090b; }
+        .view-btn.active { color: #f97316; background-color: rgba(249, 115, 22, 0.1); border-color: rgba(249, 115, 22, 0.3); }
+
+        /* iOS Spring Animations - Smooth scale and bounce */
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.92) translateY(12px); }    
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .animate-item {
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.15) forwards;    
+            opacity: 0;
+        }
+
+        .ios-spring { transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.15) !important; }
+        .ios-active { transition: all 0.2s ease; }
+        .ios-active:active { transform: scale(0.94) !important; opacity: 0.8; transition: all 0.1s ease !important; }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #f97316; }
+    </style>
+</head>
+<body class="bg-zinc-950 text-zinc-300 font-sans h-screen flex overflow-hidden selection:bg-orange-500/30 selection:text-orange-100">
+
+    <!-- Boot / Loading Screen -->
+    <div id="bootScreen" class="fixed inset-0 z-[200] bg-zinc-950 flex flex-col items-center justify-center transition-opacity duration-700">
+        <i class="fa-solid fa-cloud text-orange-500 text-7xl animate-pulse drop-shadow-[0_0_25px_rgba(249,115,22,0.4)]"></i>
+        <h1 class="mt-6 text-xl font-medium tracking-widest text-zinc-400">CONNECTING...</h1>
+    </div>
+
+    <!-- Login -->
+    <div id="loginScreen" class="hidden w-full h-full items-center justify-center bg-zinc-950 absolute z-50">
+        <div class="bg-zinc-900/80 p-10 rounded-3xl shadow-2xl w-full max-w-md border border-zinc-800 backdrop-blur-md animate-item">
+            <div class="flex justify-center mb-6">
+                <i class="fa-solid fa-cloud text-orange-500 text-6xl drop-shadow-[0_0_15px_rgba(249,115,22,0.3)]"></i>
+            </div>
+            <h2 class="text-3xl font-semibold text-center text-zinc-100 mb-2 tracking-tight">Welcome Back</h2>
+            <p class="text-center text-zinc-500 text-sm mb-6">Sign in to your private cloud storage</p>
+
+            <form id="loginForm" class="space-y-4">
+                <div>
+                    <input type="text" id="username" class="w-full px-4 py-3.5 bg-zinc-950/50 border border-zinc-800 rounded-xl text-zinc-200 focus:outline-none focus:border-orange-500 transition-colors ios-spring" placeholder="Username (admin)" required>
+                </div>
+                <div>
+                    <input type="password" id="password" class="w-full px-4 py-3.5 bg-zinc-950/50 border border-zinc-800 rounded-xl text-zinc-200 focus:outline-none focus:border-orange-500 transition-colors ios-spring" placeholder="Password" required>
+                </div>
+
+                <details class="group py-2">
+                    <summary class="text-xs text-zinc-500 cursor-pointer hover:text-orange-400 select-none transition-colors ml-1">Advanced Connection</summary>
+                    <div class="mt-3">
+                         <input type="text" id="serverUrl" class="w-full px-4 py-3 bg-zinc-950/50 border border-zinc-800 rounded-xl text-zinc-200 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-colors ios-spring" placeholder="Remote Server URL (leave blank if local)">
+                    </div>
+                </details>
+
+                <button type="submit" class="ios-active w-full py-3.5 px-4 mt-2 rounded-xl text-zinc-950 bg-orange-500 hover:bg-orange-400 font-bold shadow-[0_0_20px_rgba(249,115,22,0.25)] hover:shadow-[0_0_25px_rgba(249,115,22,0.4)] transition-all duration-300">
+                    Access My Files <i class="fa-solid fa-arrow-right ml-2"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- App Screen -->
+    <div id="appScreen" class="hidden w-full h-full flex opacity-0 transition-opacity duration-500">
+        <!-- Sidebar -->
+        <div class="w-64 bg-zinc-900/50 border-r border-zinc-800/80 flex flex-col z-20 relative backdrop-blur-md hidden md:flex shrink-0">
+            <button onclick="openPath('')" class="p-6 flex items-center gap-4 hover:bg-zinc-800/30 transition-colors w-full text-left ios-active group cursor-pointer border-none outline-none">
+                  <i class="fa-solid fa-cloud text-orange-500 text-3xl drop-shadow-[0_0_10px_rgba(249,115,22,0.3)] group-hover:scale-110 transition-transform"></i>
+                  <span class="text-xl font-bold text-zinc-100 tracking-tight">Cloud Home</span>
+              </button>
+            <div class="px-5 py-2 mt-2 flex flex-col gap-3">
+                <button onclick="document.getElementById('hiddenFileInput').click()" class="bg-orange-500/10 border border-orange-500/20 hover:border-orange-500/50 hover:bg-orange-500/20 text-orange-400 font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all w-full shadow-sm hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] ios-active">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Upload        
+                </button>
+                <input type="file" id="hiddenFileInput" class="hidden" multiple>
+                <button id="newFolderBtn" class="bg-zinc-800/50 hover:bg-zinc-700/80 text-zinc-300 font-medium py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors w-full border border-zinc-700/50 ios-active">
+                    <i class="fa-solid fa-folder-plus"></i> New Folder       
+                </button>
+            </div>
+
+            <nav class="flex-1 px-4 space-y-1 mt-6">
+                <a href="#" onclick="openPath(''); return false;" class="bg-zinc-800/80 text-orange-400 flex items-center px-4 py-3 text-sm font-medium rounded-xl border border-zinc-700/50 shadow-inner transition-all hover:brightness-110 ios-active">
+                    <i class="fa-solid fa-hard-drive text-lg w-8 text-center"></i> Root Drive
+                </a>
+            </nav>
+
+            <div class="px-5 mb-6">
+                  <div class="bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/80 shadow-inner">
+                      <div class="flex justify-between items-center mb-2.5">
+                          <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-1.5"><i class="fa-solid fa-database text-zinc-500"></i> Storage</span>
+                          <span id="storagePercent" class="text-[10px] font-bold text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded-full">...</span>
+                      </div>
+                      <div class="w-full bg-zinc-800/80 rounded-full h-1.5 mb-2 overflow-hidden shadow-inner flex">
+                          <div id="storageBar" class="bg-gradient-to-r from-orange-500 hover:from-amber-400 to-orange-400 h-full rounded-full transition-all duration-1000 ease-out" style="width: 0%"></div>
+                      </div>
+                      <div id="storageDetails" class="text-[10px] text-zinc-500 font-medium tracking-wide">Calculating...</div>
+                  </div>
+              </div>
+              <div class="p-5 mt-auto border-t bg-zinc-900/30 border-zinc-800/80">
+                <button id="logoutBtn" class="text-zinc-500 hover:text-orange-400 font-medium py-2 w-full transition-colors flex justify-center items-center gap-2 rounded-lg hover:bg-zinc-800/50 ios-active">
+                    <i class="fa-solid fa-right-from-bracket"></i> Disconnect
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 flex flex-col bg-zinc-950 relative w-full h-full">
+            <header class="h-20 border-b border-zinc-800 flex items-center px-4 sm:px-8 justify-between bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-10">
+                
+                <!-- Breadcrumbs & Back -->
+                <div class="flex items-center gap-2 sm:gap-4 w-1/4 overflow-hidden">  
+                    <button onclick="goUp()" class="text-zinc-400 hover:text-orange-500 hover:bg-zinc-900 p-2.5 rounded-xl transition-colors ios-active">
+                        <i class="fa-solid fa-chevron-left text-lg"></i>
+                    </button>
+                    <!-- Breadcrumbs -->
+                    <div id="breadcrumbs" class="flex items-center gap-1.5 text-sm font-medium text-zinc-400 overflow-x-auto whitespace-nowrap scrollbar-hide w-full pb-1">
+                    </div>
+                </div>
+
+                <!-- Global Search Bar -->
+                <div class="flex-1 max-w-xl px-4 ios-spring">
+                    <div class="relative group">
+                        <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-orange-500 transition-colors"></i>
+                        <input type="text" id="searchInput" placeholder="Search files & folders..." class="w-full bg-zinc-900/80 border border-zinc-800/80 rounded-full py-2.5 pl-12 pr-4 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50 transition-all shadow-inner ios-spring placeholder:text-zinc-600">
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3 justify-end w-1/4">
+                    <div id="uploadStatus" class="hidden flex items-center gap-3 bg-orange-500/10 px-4 py-2 rounded-full border border-orange-500/20 shadow-sm transition-all">
+                        <i class="fa-solid fa-circle-notch fa-spin text-orange-500 text-sm"></i>
+                        <span class="text-orange-400 text-sm font-medium hidden lg:inline" id="uploadText">Uploading...</span>
+                    </div>
+
+                    <!-- Layout Controls -->
+                    <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-1 flex !text-zinc-400 shadow-inner">
+                        <button onclick="setView('large-grid')" id="btn-large-grid" class="view-btn active p-2 rounded-lg transition-colors ios-active" title="Large Grid">
+                            <i class="fa-solid fa-images"></i>
+                        </button>
+                        <button onclick="setView('small-grid')" id="btn-small-grid" class="view-btn p-2 rounded-lg transition-colors ios-active hidden sm:block" title="Small Grid">
+                            <i class="fa-solid fa-border-all"></i>
+                        </button>
+                        <button onclick="setView('list')" id="btn-list" class="view-btn p-2 rounded-lg transition-colors ios-active" title="List View">
+                            <i class="fa-solid fa-list"></i>
+                        </button>
+                    </div>
+
+                    <!-- Mobile Add Button -->
+                    <button class="md:hidden text-orange-500 p-2 text-xl ios-active" onclick="document.getElementById('hiddenFileInput').click()">
+                        <i class="fa-solid fa-plus-circle"></i>
+                    </button>
+                </div>
+            </header>
+
+            <main class="flex-1 overflow-y-auto p-4 sm:p-8 relative" id="dropZone">
+                <div id="dropOverlay" class="hidden absolute inset-4 bg-zinc-950/95 z-40 flex items-center justify-center border-2 border-dashed border-orange-500 rounded-3xl backdrop-blur-sm transition-opacity">
+                    <div class="text-center animate-item">
+                        <i class="fa-solid fa-cloud-arrow-up text-7xl text-orange-500 mb-6 animate-bounce drop-shadow-[0_0_20px_rgba(249,115,22,0.4)]"></i>  
+                        <h2 class="text-3xl font-bold text-zinc-100 tracking-tight">Drop files to upload here</h2>
+                    </div>
+                </div>
+
+                <!-- Structured Layout -->
+                
+                <div id="foldersSection" class="mb-10 hidden">
+                    <h2 class="text-zinc-500 text-[11px] font-bold tracking-[0.15em] mb-4 flex items-center gap-2 ml-2">
+                        <i class="fa-solid fa-folder-open text-orange-500/80"></i> FOLDERS
+                    </h2>
+                    <div id="foldersList"></div>
+                </div>
+
+                <div id="filesSection" class="hidden">
+                    <h2 class="text-zinc-500 text-[11px] font-bold tracking-[0.15em] mb-4 flex items-center gap-2 ml-2">
+                        <i class="fa-solid fa-clock text-orange-500/80"></i> RECENT FILES
+                    </h2>
+                    <div id="filesListContainer"></div>
+                </div>
+
+                <div id="emptyState" class="col-span-full mt-24 flex flex-col items-center justify-center text-zinc-600 animate-item hidden">
+                    <i class="fa-solid fa-folder-open text-6xl mb-4 opacity-50"></i>
+                    <p class="text-lg">No files match your search</p>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Image Preview Modal -->
+    <div id="imageModal" class="hidden fixed inset-0 z-[100] bg-zinc-950/95 flex-col items-center justify-center backdrop-blur-2xl transition-all duration-300 opacity-0 scale-95" onclick="closeImage()">
+        <!-- Close Button -->
+        <button onclick="closeImage()" class="absolute top-6 right-6 text-zinc-500 hover:text-white bg-zinc-900/50 hover:bg-zinc-800 rounded-full w-12 h-12 flex items-center justify-center text-xl z-50 transition-all shadow-lg border border-zinc-800/50 ios-active"><i class="fa-solid fa-xmark"></i></button>
+
+        <!-- Navigation Buttons -->
+        <button onclick="prevImage(event)" class="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-orange-500 bg-zinc-900/30 hover:bg-zinc-900 border border-zinc-800/50 rounded-full w-14 h-14 items-center justify-center text-2xl z-50 transition-all shadow-xl hover:scale-110 group ios-active hidden sm:flex"><i class="fa-solid fa-chevron-left group-hover:-translate-x-1 transition-transform"></i></button>
+        <button onclick="nextImage(event)" class="absolute right-6 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-orange-500 bg-zinc-900/30 hover:bg-zinc-900 border border-zinc-800/50 rounded-full w-14 h-14 items-center justify-center text-2xl z-50 transition-all shadow-xl hover:scale-110 group ios-active hidden sm:flex"><i class="fa-solid fa-chevron-right group-hover:translate-x-1 transition-transform"></i></button>
+
+        <img id="previewImg" class="max-h-[85vh] max-w-[85vw] object-contain shadow-[0_0_50px_rgba(0,0,0,0.5)] rounded-2xl transition-all duration-400 cubic-bezier(0.175, 0.885, 0.32, 1.1) ease-out hidden" src="" alt="preview" onclick="event.stopPropagation()">
+          <iframe id="previewIframe" class="w-[85vw] h-[85vh] bg-zinc-100 shadow-[0_0_50px_rgba(0,0,0,0.5)] rounded-2xl transition-all duration-400 cubic-bezier(0.175, 0.885, 0.32, 1.1) ease-out hidden" src="" onclick="event.stopPropagation()"></iframe>
+
+        <!-- Info Banner -->
+        <div class="absolute bottom-0 inset-x-0 h-24 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-center pb-6 z-40 pointer-events-none">
+            <div id="previewTitle" class="text-zinc-200 font-medium text-lg tracking-wide drop-shadow-md"></div>
+        </div>
+    </div>
+
+    <script>
+      const loginScreen = document.getElementById("loginScreen");
+      const appScreen = document.getElementById("appScreen");
+      const breadcrumbs = document.getElementById("breadcrumbs");
+      const bootScreen = document.getElementById("bootScreen");
+
+      const foldersSection = document.getElementById("foldersSection");
+      const foldersList = document.getElementById("foldersList");
+      const filesSection = document.getElementById("filesSection");
+      const filesListContainer = document.getElementById("filesListContainer");
+      const emptyState = document.getElementById("emptyState");
+      const searchInput = document.getElementById("searchInput");
+
+      let currentPath = "";
+      let activeView = localStorage.getItem("cloud_view") || "large-grid";
+      let currentContents = []; // Stores the whole api call
+      
+      let currentImagesList = [];
+      let currentImageIdx = -1;
+
+      const savedHost = localStorage.getItem("cloud_host") || "";
+      if (document.getElementById("serverUrl")) document.getElementById("serverUrl").value = savedHost;
+
+      function getBaseUrl() {
+        const url = document.getElementById("serverUrl").value.trim();       
+        if (url) localStorage.setItem("cloud_host", url);
+        return url.replace(/\/$/, "");
+      }
+
+      async function api(path, options = {}) {
+        const res = await fetch(`${getBaseUrl()}${path}`, {
+          credentials: "include",
+          headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+          ...options,
+        });
+        const contentType = res.headers.get("content-type") || "";
+        const data = contentType.includes("application/json") ? await res.json() : await res.text();
+        if (!res.ok) throw new Error(data.error || "Request failed");        
+        return data;
+      }
+
+      async function initApp() {
+          try {
+              await api("/api/me", { method: "GET" });
+              bootScreen.classList.add("opacity-0");
+              setTimeout(() => { bootScreen.classList.add("hidden"); }, 700);
+
+              appScreen.classList.remove("hidden");
+              setTimeout(() => { appScreen.classList.remove("opacity-0"); }, 50);
+                updateStorage();
+
+              const urlParams = new URLSearchParams(window.location.search);
+              const initialPath = urlParams.get("path") || "";
+              openPath(initialPath, true);
+              setView(activeView);
+          } catch(e) {
+              bootScreen.classList.add("opacity-0");
+              setTimeout(() => { bootScreen.classList.add("hidden"); }, 700);
+              loginScreen.classList.remove("hidden");
+              loginScreen.classList.add("flex");
+          }
+      }
+      setTimeout(initApp, 500);
+
+      window.addEventListener("popstate", (e) => {
+          const statePath = e.state ? e.state.path : "";
+          openPath(statePath, true);
+      });
+
+      async function updateStorage() {
+          try {
+              const data = await api("/api/storage", { method: "GET" });
+              const pct = (data.used / data.total) * 100;
+              document.getElementById("storagePercent").textContent = pct.toFixed(1) + "%";
+              document.getElementById("storageBar").style.width = Math.min(pct, 100) + "%";
+              document.getElementById("storageDetails").textContent = fmtSize(data.used) + " / " + fmtSize(data.total);
+          } catch(e) { console.error("Storage check failed", e); }
+      }
+
+      function fmtSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024, sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+      }
+
+      function isImage(ext) { return ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'heic', 'avif'].includes(ext); } 
+        function isViewable(ext) { return ["pdf", "txt", "md", "json", "xml", "csv", "mp4", "webm", "ogg", "mp3", "wav", "html", "js", "css", "srt"].includes(ext); }
+
+      function updateBreadcrumbs(pathStr) {
+          breadcrumbs.innerHTML = `<span class="cursor-pointer hover:text-orange-400 flex items-center gap-1.5 transition-colors ios-active" onclick="openPath('')"><i class="fa-solid fa-hdd text-orange-500"></i> H:</span>`;
+          if (!pathStr) return;
+          const parts = pathStr.split('/');
+          let buildPath = "";
+          parts.forEach((p, idx) => {
+              if(!p) return;
+              buildPath += (idx===0?"":"/") + p;
+              const safeP = buildPath;
+              breadcrumbs.innerHTML += ` <i class="fa-solid fa-chevron-right text-[10px] opacity-40 px-1 mt-0.5"></i> <span class="cursor-pointer hover:text-orange-400 transition-colors ios-active" onclick="openPath('${safeP}')">${p}</span>`;      
+          });
+      }
+
+      function goUp() {
+          if(!currentPath) return;
+          let parts = currentPath.split('/');
+          parts.pop();
+          openPath(parts.join('/'));
+      }
+
+      async function openPath(p, skipHistory = false) {
+          currentPath = p;
+          searchInput.value = ""; // clear search on navigation
+          if (!skipHistory) {
+              const url = new URL(window.location);
+              url.searchParams.set("path", p);
+              window.history.pushState({ path: p }, "", url);
+          }
+          await loadFiles();
+      }
+
+      function openImageModal(idx) {
+            if(idx < 0 || idx >= currentImagesList.length) return;
+            currentImageIdx = idx;
+            const imgData = currentImagesList[idx];
+
+            const modal = document.getElementById("imageModal");
+            const previewImg = document.getElementById("previewImg");
+            const previewIframe = document.getElementById("previewIframe");
+            const title = document.getElementById("previewTitle");
+
+            previewIframe.classList.add("hidden");
+            previewIframe.src = "";
+            previewImg.classList.remove("hidden");
+
+            // Show nav buttons for gallery
+            document.querySelectorAll("#imageModal button[onclick^='nextImage'], #imageModal button[onclick^='prevImage']").forEach(b => {
+                b.classList.remove("sm:hidden");
+                b.classList.add("sm:flex");
+            });
+
+            previewImg.style.opacity = "0.3";
+            previewImg.style.transform = "scale(0.96)";
+            previewImg.src = `${getBaseUrl()}/api/files/download/${imgData.id}`;
+            title.textContent = imgData.originalName;
+
+            previewImg.onload = () => {
+                previewImg.style.opacity = "1";
+                previewImg.style.transform = "scale(1)";
+            };
+
+            showModal(modal);
+        }
+
+        function openViewModal(fileId, fileName) {
+            const modal = document.getElementById("imageModal");
+            const previewImg = document.getElementById("previewImg");
+            const previewIframe = document.getElementById("previewIframe");
+            const title = document.getElementById("previewTitle");
+
+            previewImg.classList.add("hidden");
+            previewImg.src = "";
+            previewIframe.classList.remove("hidden");
+
+            // Hide nav buttons since it's a single file view
+            document.querySelectorAll("#imageModal button[onclick^='nextImage'], #imageModal button[onclick^='prevImage']").forEach(b => {
+                b.classList.remove("sm:flex");
+                b.classList.add("sm:hidden");
+            });
+
+            previewIframe.style.opacity = "0.3";
+            previewIframe.style.transform = "scale(0.96)";
+            previewIframe.src = `${getBaseUrl()}/api/files/view/${fileId}`;
+            title.textContent = fileName;
+
+            previewIframe.onload = () => {
+                previewIframe.style.opacity = "1";
+                previewIframe.style.transform = "scale(1)";
+            };
+
+            showModal(modal);
+        }
+
+        function showModal(modal) {
+            if(modal.classList.contains("hidden")) {
+                modal.classList.remove("hidden");
+                modal.classList.add("flex");
+                void modal.offsetWidth;
+                modal.classList.remove("opacity-0", "scale-95");
+                modal.classList.add("opacity-100", "scale-100");
+            }
+        }
+
+        function closeImage() {
+            const modal = document.getElementById("imageModal");
+            modal.classList.remove("opacity-100", "scale-100");
+            modal.classList.add("opacity-0", "scale-95");
+            
+            const previewImg = document.getElementById("previewImg");
+            const previewIframe = document.getElementById("previewIframe");
+            if(previewImg) previewImg.style.transform = "scale(0.9)";
+            if(previewIframe) previewIframe.style.transform = "scale(0.9)";
+
+            setTimeout(() => {
+                modal.classList.add("hidden");
+                modal.classList.remove("flex");
+                if(previewImg) previewImg.src = "";
+                if(previewIframe) previewIframe.src = "";
+            }, 300);
+        }
+
+      function nextImage(e) { if(e) e.stopPropagation(); if (currentImageIdx < currentImagesList.length - 1) openImageModal(currentImageIdx + 1); }
+      function prevImage(e) { if(e) e.stopPropagation(); if (currentImageIdx > 0) openImageModal(currentImageIdx - 1); }
+
+      document.addEventListener('keydown', (e) => {
+          const modal = document.getElementById('imageModal');
+          if (!modal.classList.contains('hidden')) {
+              if (e.key === 'ArrowRight') nextImage();
+              if (e.key === 'ArrowLeft') prevImage();
+              if (e.key === 'Escape') closeImage();
+          }
+      });
+
+      function setView(viewType) {
+          activeView = viewType;
+          localStorage.setItem("cloud_view", viewType);
+
+          document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active', 'text-orange-500'));
+          document.getElementById(`btn-${viewType}`).classList.add('active');
+
+          if(currentPath !== undefined && appScreen.classList.contains("hidden") === false) {
+             renderFiles();
+          }
+      }
+
+      function applyGridClasses(container) {
+          if(activeView === 'large-grid') {
+              container.className = "grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6";
+          } else if(activeView === 'small-grid') {
+              container.className = "grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4";
+          } else {
+              container.className = "flex flex-col gap-2.5";
+          }
+      }
+
+      async function loadFiles() {
+        try {
+            const data = await api(`/api/files?path=${encodeURIComponent(currentPath)}`, { method: "GET" });
+            currentContents = data.contents;
+            currentPath = data.currentPath;
+            updateBreadcrumbs(currentPath);
+            renderFiles();
+        } catch(e) { console.error(e); }
+      }
+
+      function createFileCard(f, index) {
+          const ext = f.originalName.split('.').pop().toLowerCase();
+          const isImg = !f.isDir && isImage(ext);
+          const thumbUrl = isImg ? `${getBaseUrl()}/api/files/thumb/${f.id}` : null;
+          
+          const div = document.createElement("div");
+          div.style.animationDelay = `${Math.min(index * 0.02, 0.3)}s`;
+          div.className = "file-card group relative bg-zinc-900 border border-zinc-800 hover:border-orange-500/50 shadow-sm cursor-pointer overflow-hidden animate-item hover:shadow-lg ios-spring ios-active";
+
+          if (activeView === 'list') {
+              div.classList.add("rounded-2xl", "p-3", "flex", "items-center", "gap-4");
+              let iconHtml = f.isDir
+                  ? '<i class="fa-solid fa-folder text-orange-500 text-3xl w-14 text-center drop-shadow-sm group-hover:scale-110 ios-spring"></i>'
+                  : (isImg ? `<img src="${thumbUrl}" class="w-12 h-12 ml-1 object-cover rounded-xl shadow-sm border border-zinc-700/50 group-hover:scale-105 ios-spring">`
+                           : '<i class="fa-solid fa-file-lines text-zinc-600 text-3xl w-14 text-center group-hover:scale-110 ios-spring"></i>');
+
+              div.innerHTML = `
+                ${iconHtml}
+                <div class="flex-1 truncate pl-1">
+                    <h3 class="text-sm font-semibold text-zinc-200 truncate pr-4">${f.originalName}</h3>
+                    <p class="text-xs text-zinc-500 mt-0.5">${f.isDir ? 'Folder' : fmtSize(f.size)}</p>
+                </div>
+                <div class="flex gap-1.5 pr-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    ${!f.isDir ? `<button data-id="${f.id}" class="downBtn w-9 h-9 rounded-full bg-zinc-800 text-zinc-400 hover:text-orange-400 hover:bg-zinc-700 flex items-center justify-center transition-colors ios-active"><i class="fa-solid fa-cloud-arrow-down"></i></button>` : ''}
+                    <button data-id="${f.id}" class="delBtn w-9 h-9 rounded-full bg-zinc-800 text-zinc-400 hover:text-red-500 hover:bg-zinc-700 flex items-center justify-center transition-colors ios-active"><i class="fa-solid fa-trash"></i></button>
+                </div>
+              `;
+          } 
+          else {
+              div.classList.add("rounded-[24px]", "flex", "flex-col");      
+              const imgHeight = activeView === 'large-grid' ? 'h-40 sm:h-52' : 'h-28 sm:h-32';
+
+              let topSectionHtml = "";
+              if (isImg) {
+                  topSectionHtml = `
+                    <div class="w-full ${imgHeight} bg-black/60 relative border-b border-zinc-800/50 overflow-hidden">
+                        <img src="${thumbUrl}" loading="lazy" class="w-full h-full object-cover object-center group-hover:scale-110 transition-transform duration-700" alt="${f.originalName}">
+                    </div>`;
+              } else {
+                  topSectionHtml = `
+                    <div class="w-full ${imgHeight} bg-zinc-950/40 flex items-center justify-center border-b border-zinc-800/50 group-hover:bg-zinc-900/80 ios-spring">
+                        ${f.isDir ? '<i class="fa-solid fa-folder text-orange-500/90 text-6xl group-hover:scale-110 group-active:scale-95 drop-shadow-lg ios-spring"></i>'
+                                  : '<i class="fa-solid fa-file-lines text-zinc-700 text-5xl group-hover:scale-110 ios-spring"></i>'}
+                    </div>`;
+              }
+
+              div.innerHTML = `
+                ${topSectionHtml}
+                <div class="p-4 bg-zinc-900/90 z-10 flex flex-col justify-center min-h-[4.5rem]">
+                    <h3 class="text-sm font-medium text-zinc-200 w-full truncate tracking-tight" title="${f.originalName}">${f.originalName}</h3>        
+                    <div class="mt-1 flex justify-between items-center text-[11px] text-zinc-500 font-medium">
+                        <span>${f.isDir ? 'Folder' : fmtSize(f.size)}</span>
+                    </div>
+                </div>
+
+                <div class="file-actions absolute top-3 right-3 flex flex-col gap-2 z-20">
+                    ${!f.isDir ? `<button data-id="${f.id}" class="downBtn bg-zinc-950/80 text-zinc-300 hover:text-orange-400 w-9 h-9 rounded-full shadow-xl border border-zinc-700 flex items-center justify-center backdrop-blur-md ios-active"><i class="fa-solid fa-cloud-arrow-down text-sm"></i></button>` : ''}
+                    <button data-id="${f.id}" class="delBtn bg-zinc-950/80 text-zinc-300 hover:text-red-500 w-9 h-9 rounded-full shadow-xl border border-zinc-700 flex items-center justify-center backdrop-blur-md ios-active"><i class="fa-solid fa-trash text-sm"></i></button>
+                </div>
+              `;
+          }
+
+          div.addEventListener("click", () => {
+                if (f.isDir) {
+                    openPath(f.relativePath);
+                } else if (isImg) {
+                    openImageModal(f.galleryIdx);
+                } else if (typeof isViewable === "function" && isViewable(ext)) {
+                    openViewModal(f.id, f.originalName);
+                }
+          });
+
+          return div;
+      }
+
+      function renderFiles() {
+          const query = searchInput.value.toLowerCase().trim();
+          let list = currentContents;
+          
+          if(query) {
+              list = list.filter(f => f.originalName.toLowerCase().includes(query));
+          }
+
+          foldersList.innerHTML = "";
+          filesListContainer.innerHTML = "";
+          currentImagesList = [];
+
+          if(!list.length) {
+              foldersSection.classList.add("hidden");
+              filesSection.classList.add("hidden");
+              emptyState.classList.remove("hidden");
+              return;
+          }
+          emptyState.classList.add("hidden");
+
+          let folders = list.filter(f => f.isDir);
+          let files = list.filter(f => !f.isDir);
+
+          // Sort files by recent (descending uploadedAt)
+          files.sort((a,b) => new Date(b.uploadedAt || 0) - new Date(a.uploadedAt || 0));
+
+          if(folders.length > 0) {
+              foldersSection.classList.remove("hidden");
+              applyGridClasses(foldersList);
+              folders.forEach((f, index) => foldersList.appendChild(createFileCard(f, index)));
+          } else {
+              foldersSection.classList.add("hidden");
+          }
+
+          if(files.length > 0) {
+              filesSection.classList.remove("hidden");
+              applyGridClasses(filesListContainer);
+              files.forEach((f, index) => {
+                  const ext = f.originalName.split('.').pop().toLowerCase();
+                  if(isImage(ext)) {
+                      f.galleryIdx = currentImagesList.length;
+                      currentImagesList.push(f);
+                  }
+                  filesListContainer.appendChild(createFileCard(f, index));
+              });
+          } else {
+              filesSection.classList.add("hidden");
+          }
+
+          // Attach button event listeners after rendering
+          document.querySelectorAll(".downBtn").forEach(btn => btn.addEventListener("click", (e) => {
+              e.stopPropagation(); window.open(`${getBaseUrl()}/api/files/download/${btn.dataset.id}`, "_blank");
+          }));
+          document.querySelectorAll(".delBtn").forEach(btn => btn.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              if (!confirm("Permanently delete?")) return;
+              await api(`/api/files/${btn.dataset.id}`, { method: "DELETE" });
+              loadFiles();
+          }));
+      }
+
+      searchInput.addEventListener("input", renderFiles);
+
+      document.getElementById("loginForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          await api("/api/login", {
+            method: "POST",
+            body: JSON.stringify({ username: document.getElementById("username").value, password: document.getElementById("password").value }),
+          });
+          loginScreen.classList.add("hidden");
+          appScreen.classList.remove("hidden");
+          setTimeout(() => { appScreen.classList.remove("opacity-0"); }, 50);
+                updateStorage();
+          const urlParams = new URLSearchParams(window.location.search);
+          const initialPath = urlParams.get("path") || "";
+          openPath(initialPath, true);
+          setView(activeView);
+        } catch (err) { alert("Login failed. Check password or URL."); }     
+      });
+
+      document.getElementById("logoutBtn").addEventListener("click", async () => {
+        await api("/api/logout", { method: "POST" });
+        location.reload();
+      });
+
+      document.getElementById("newFolderBtn").addEventListener("click", async () => {
+          const name = prompt("New folder name:");
+          if(!name) return;
+          try {
+             await api("/api/files/mkdir", { method:"POST", body: JSON.stringify({path: currentPath, name}) });
+             loadFiles();
+          } catch(e) { alert("Failed to create folder"); }
+      });
+
+      async function uploadFiles(files) {
+          if (!files || !files.length) return;
+          const status = document.getElementById("uploadStatus");
+          const text = document.getElementById("uploadText");
+          status.classList.remove("hidden");
+          status.classList.add("animate-pulse");
+
+          try {
+             for(let i=0; i<files.length; i++) {
+                text.textContent = `Uploading ${i+1}/${files.length}`;    
+                const fd = new FormData(); fd.append("file", files[i]);      
+                await fetch(`${getBaseUrl()}/api/files/upload?path=${encodeURIComponent(currentPath)}`, { method: "POST", body: fd, credentials: "include" });
+             }
+             loadFiles();
+          } finally {
+              status.classList.add("hidden");
+              status.classList.remove("animate-pulse");
+          }
+      }
+
+      document.getElementById("hiddenFileInput").addEventListener("change", (e) => {
+          uploadFiles(e.target.files);
+          e.target.value = "";
+      });
+
+      let dragCounter = 0; const dropZone = document.getElementById("dropZone"), dropOverlay = document.getElementById("dropOverlay");
+      dropZone.addEventListener("dragenter", (e) => { e.preventDefault(); dragCounter++; dropOverlay.classList.remove("hidden"); });
+      dropZone.addEventListener("dragleave", (e) => { e.preventDefault(); dragCounter--; if (!dragCounter) dropOverlay.classList.add("hidden"); });
+      dropZone.addEventListener("dragover", (e) => e.preventDefault());      
+      dropZone.addEventListener("drop", (e) => {
+          e.preventDefault(); dragCounter = 0; dropOverlay.classList.add("hidden");
+          uploadFiles(e.dataTransfer.files);
+      });
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
