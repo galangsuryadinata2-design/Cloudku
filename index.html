@@ -234,7 +234,10 @@
       let currentImageIdx = -1;
 
       const savedHost = localStorage.getItem("cloud_host") || "";
-      if (document.getElementById("serverUrl")) document.getElementById("serverUrl").value = savedHost;
+      const DEFAULT_REMOTE_URL = "https://digest-looks-reliability-shame.trycloudflare.com";
+      if (document.getElementById("serverUrl")) {
+        document.getElementById("serverUrl").value = savedHost || DEFAULT_REMOTE_URL;
+      }
 
       function getBaseUrl() {
         const url = document.getElementById("serverUrl").value.trim();       
